@@ -132,7 +132,59 @@ export function createStudentView() {
       root.append(sessionList);
       return root;
     },
-    renderDecision() { return '학생 구현 대기: 서버의 판정과 이유를 연결하세요.'; },
+    renderDecision({ status = 'idle', mode = 'unknown', data, error, appId } = {}) {
+      const root = document.createElement('section');
+      root.className = 'student-decision';
+      const element = (tag, text) => {
+        const node = document.createElement(tag);
+        node.textContent = text;
+        return node;
+      };
+      const value = (input) => typeof input === 'string' && input.length > 0 ? input : '확인 불가';
+      root.append(element('h3', '업무 앱 접속 판정'));
+      const modes = { connected: '연결됨', demo: '예제 자료', disconnected: '연결 없음', unknown: '확인 불가' };
+      root.append(element('p', '연결 모드: ' + (Object.hasOwn(modes, mode) ? modes[mode] : modes.unknown)));
+
+      if (status === 'idle') {
+        root.append(element('p', '앱을 골라 접속을 요청하세요.'));
+        return root;
+      }
+      root.append(element('p', '업무 앱 ID: ' + value(status === 'ok' ? data?.appId ?? appId : appId)));
+      if (status === 'loading') {
+        root.append(element('p', '판정 확인 중'));
+        return root;
+      }
+      if (status === 'error') {
+        root.append(
+          element('p', '요청 실패: ' + value(error?.message)),
+          element('p', '요청 실패는 접근 거부(deny) 판정이 아닙니다. 접근 허용 여부를 확인할 수 없습니다.'),
+        );
+        return root;
+      }
+      if (status !== 'ok') {
+        root.append(element('p', '판정 확인 불가(unknown): 요청 상태를 확인할 수 없습니다.'));
+        return root;
+      }
+
+      const decisions = {
+        allow: '접근 허용(allow)',
+        deny: '접근 거부(deny)',
+        challenge: '추가 인증 또는 확인 필요(challenge)',
+        unknown: '판정 확인 불가(unknown)',
+      };
+      const decision = typeof data?.decision === 'string' && Object.hasOwn(decisions, data.decision) ? data.decision : 'unknown';
+      root.append(element('p', decisions[decision]));
+      const details = document.createElement('dl');
+      details.append(
+        element('dt', '판정 이유'), element('dd', value(data?.reason)),
+        element('dt', '판정 시각'), element('dd', value(data?.checkedAt)),
+      );
+      root.append(details);
+      if (decision === 'allow') root.append(element('p', '정책상 접근 허용이며 실제 앱 접속 성공을 보장하지 않습니다.'));
+      if (decision === 'challenge') root.append(element('p', '추가 인증 또는 확인이 필요합니다. 이 앱은 확인 절차를 대신 수행하지 않습니다.'));
+      if (decision === 'unknown') root.append(element('p', '접근 허용 여부를 확인할 수 없습니다.'));
+      return root;
+    },
     renderEvents() { return '학생 구현 대기: 본인 접속·XDR 기록을 연결하세요.'; },
     renderStatus() { return '학생 구현 대기: 기기·세션·알림과 연결 점검 상태를 구분하세요.'; },
     renderVulnerabilities() { return '학생 구현 대기: 정확한 설치 버전·OSV 출처·조회 시각·부분 결과·조회 실패를 구분하세요.'; },
