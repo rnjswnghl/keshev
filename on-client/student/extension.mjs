@@ -44,15 +44,15 @@ export function createStudentView() {
         list.append(element('dt', label), element('dd', text));
       };
       const deviceStatus = (status) => ({
-        compliant: '보안 기준 충족',
-        noncompliant: '보안 기준 미충족',
-        unknown: '확인 불가',
+        compliant: '보안 기준 충족(compliant)',
+        noncompliant: '보안 기준 미충족(noncompliant)',
+        unknown: '확인 불가(unknown)',
       })[status] ?? '확인 불가';
       const sessionStatus = (status) => ({
-        active: '활성',
-        expired: '만료',
-        revoked: '철회됨',
-        unknown: '확인 불가',
+        active: '활성(active)',
+        expired: '만료(expired)',
+        revoked: '철회됨(revoked)',
+        unknown: '확인 불가(unknown)',
       })[status] ?? '확인 불가';
 
       const current = group('계정·현재 기기·현재 세션');
