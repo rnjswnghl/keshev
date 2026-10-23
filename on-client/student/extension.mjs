@@ -1,3 +1,39 @@
+// AI 표시 두 함수가 공유하는 안전한 오류 문구와 DOM 생성기입니다.
+const AI_ERROR_MESSAGES = Object.freeze({
+  "ON_AI_PROVISIONING_PENDING": "학생 앱 이용 권한의 발급·연결을 준비 중입니다. 담당자에게 확인하세요.",
+  "WB_CLCO_AUTH_REQUIRED": "앱 전용 열쇠의 인증을 확인하세요. Workbench 열쇠를 복사하지 마세요.",
+  "WB_CLCO_ACCESS_BLOCKED": "학생 앱의 이용 권한을 확인하세요.",
+  "WB_CLCO_COHORT_BUDGET_EXHAUSTED": "반의 AI 사용량이 소진됐습니다. 담당자에게 확인하세요.",
+  "WB_CLCO_RATE_LIMITED": "AI 요청이 잠시 제한됐습니다. 잠시 후 직접 다시 요청하세요.",
+  "WB_CLCO_LIMIT_REACHED": "AI 이용 한도에 도달했습니다. 담당자에게 확인하세요.",
+  "WB_CLCO_SESSION_CLOSED": "현재 AI 이용 시간이 아닙니다. 이용 시간을 확인하세요.",
+  "WB_CLCO_TIMEOUT": "AI 응답 시간이 초과됐습니다. 필요하면 직접 다시 요청하세요.",
+  "REQUEST_TIMEOUT": "서버의 AI 응답 시간이 초과됐습니다. 필요하면 직접 다시 요청하세요.",
+  "ENGINE_TIMEOUT": "서버의 확인 시간이 초과됐습니다. 필요하면 직접 다시 요청하세요.",
+  "TIMEOUT": "AI 응답 시간이 초과됐습니다. 필요하면 직접 다시 요청하세요.",
+  "WB_CLCO_CANCELLED": "AI 요청을 취소했습니다. 이전 응답은 현재 결과가 아닙니다.",
+  "CANCELLED": "AI 요청을 취소했습니다. 이전 응답은 현재 결과가 아닙니다.",
+  "REQUEST_CANCELLED": "AI 요청을 취소했습니다. 이전 응답은 현재 결과가 아닙니다.",
+  "MODEL_NOT_CONFIGURED": "서버에 사용할 AI 모델을 설정하세요.",
+  "ON_AI_AUTHORIZATION_CHANGED": "AI 이용 권한 내용이 점검 도중 바뀌었습니다. 다시 점검하기 전에 담당자에게 현재 권한을 확인하세요.",
+  "ON_AI_MODEL_LIST_EMPTY": "현재 앱 권한으로 쓸 수 있는 AI 모델이 없습니다. 담당자에게 모델 허용 설정을 확인하세요.",
+  "SUBJECT_SCOPE_UNVERIFIED": "현재 로그인과 사건·프로젝트의 연결을 확인할 수 없습니다.",
+  "ON_AI_INVALID_INPUT": "설명에 필요한 사건 근거·규칙을 확인할 수 없습니다.",
+  "ON_AI_INVALID_OUTPUT": "AI 설명의 근거·조치·응답 형식을 확인할 수 없습니다.",
+  "AI_REQUEST_UNVERIFIED": "AI 연결 또는 응답을 확인할 수 없습니다. 기존 기록을 확인하세요.",
+  "NETWORK_ERROR": "네트워크 연결을 확인하고 잠시 뒤 직접 다시 점검하세요."
+});
+function safeAiError(input) {
+  const code = typeof input?.code === 'string' && Object.hasOwn(AI_ERROR_MESSAGES, input.code) ? input.code : 'AI_REQUEST_UNVERIFIED';
+  // 제공 UI와 같은 허용 목록만 사용한다. 원문 예외·인증 값은 표시하지 않는다.
+  return { code, message: input?.message === AI_ERROR_MESSAGES[code] ? input.message : AI_ERROR_MESSAGES[code] };
+}
+function aiElement(tag, text) {
+  const node = document.createElement(tag);
+  node.textContent = String(text);
+  return node;
+}
+
 // 이 파일은 학생이 같은 프로젝트에서 이어서 구현합니다.
 // 제공 UI를 받은 것만으로 단계 완료를 인정하지 않습니다.
 export function createStudentView() {
@@ -429,40 +465,8 @@ export function createStudentView() {
     renderAiConnection({ status = 'idle', mode = 'unknown', data, error, checkedAt, explanationAccepted } = {}) {
       const root = document.createElement('section');
       root.className = 'student-ai-connection';
-      const messages = {
-        "ON_AI_PROVISIONING_PENDING": "학생 앱 이용 권한의 발급·연결을 준비 중입니다. 담당자에게 확인하세요.",
-        "WB_CLCO_AUTH_REQUIRED": "앱 전용 열쇠의 인증을 확인하세요. Workbench 열쇠를 복사하지 마세요.",
-        "WB_CLCO_ACCESS_BLOCKED": "학생 앱의 이용 권한을 확인하세요.",
-        "WB_CLCO_COHORT_BUDGET_EXHAUSTED": "반의 AI 사용량이 소진됐습니다. 담당자에게 확인하세요.",
-        "WB_CLCO_RATE_LIMITED": "AI 요청이 잠시 제한됐습니다. 잠시 후 직접 다시 요청하세요.",
-        "WB_CLCO_LIMIT_REACHED": "AI 이용 한도에 도달했습니다. 담당자에게 확인하세요.",
-        "WB_CLCO_SESSION_CLOSED": "현재 AI 이용 시간이 아닙니다. 이용 시간을 확인하세요.",
-        "WB_CLCO_TIMEOUT": "AI 응답 시간이 초과됐습니다. 필요하면 직접 다시 요청하세요.",
-        "REQUEST_TIMEOUT": "서버의 AI 응답 시간이 초과됐습니다. 필요하면 직접 다시 요청하세요.",
-        "ENGINE_TIMEOUT": "서버의 확인 시간이 초과됐습니다. 필요하면 직접 다시 요청하세요.",
-        "TIMEOUT": "AI 응답 시간이 초과됐습니다. 필요하면 직접 다시 요청하세요.",
-        "WB_CLCO_CANCELLED": "AI 요청을 취소했습니다. 이전 응답은 현재 결과가 아닙니다.",
-        "CANCELLED": "AI 요청을 취소했습니다. 이전 응답은 현재 결과가 아닙니다.",
-        "REQUEST_CANCELLED": "AI 요청을 취소했습니다. 이전 응답은 현재 결과가 아닙니다.",
-        "MODEL_NOT_CONFIGURED": "서버에 사용할 AI 모델을 설정하세요.",
-        "ON_AI_AUTHORIZATION_CHANGED": "AI 이용 권한 내용이 점검 도중 바뀌었습니다. 다시 점검하기 전에 담당자에게 현재 권한을 확인하세요.",
-        "ON_AI_MODEL_LIST_EMPTY": "현재 앱 권한으로 쓸 수 있는 AI 모델이 없습니다. 담당자에게 모델 허용 설정을 확인하세요.",
-        "SUBJECT_SCOPE_UNVERIFIED": "현재 로그인과 사건·프로젝트의 연결을 확인할 수 없습니다.",
-        "ON_AI_INVALID_INPUT": "설명에 필요한 사건 근거·규칙을 확인할 수 없습니다.",
-        "ON_AI_INVALID_OUTPUT": "AI 설명의 근거·조치·응답 형식을 확인할 수 없습니다.",
-        "AI_REQUEST_UNVERIFIED": "AI 연결 또는 응답을 확인할 수 없습니다. 기존 기록을 확인하세요.",
-        "NETWORK_ERROR": "네트워크 연결을 확인하고 잠시 뒤 직접 다시 점검하세요."
-      };
-      const safeError = input => {
-        const code = typeof input?.code === 'string' && Object.hasOwn(messages, input.code) ? input.code : 'AI_REQUEST_UNVERIFIED';
-        // 제공 UI와 같은 허용 목록만 사용한다. 원문 예외·인증 값은 표시하지 않는다.
-        return { code, message: input?.message === messages[code] ? input.message : messages[code] };
-      };
-      const element = (tag, text) => {
-        const node = document.createElement(tag);
-        node.textContent = String(text);
-        return node;
-      };
+      const safeError = safeAiError;
+      const element = aiElement;
       root.append(element('h3', '앱 내부 AI 연결 점검'));
       const modes = { connected: '연결됨', demo: '예제 자료', disconnected: '연결 없음', unknown: '확인 불가' };
       root.append(element('p', '연결 모드: ' + (Object.hasOwn(modes, mode) ? modes[mode] : modes.unknown)));
@@ -501,40 +505,8 @@ export function createStudentView() {
     renderExplanation({ event, explanation, checkedAt } = {}) {
       const root = document.createElement('section');
       root.className = 'student-explanation';
-      const messages = {
-        "ON_AI_PROVISIONING_PENDING": "학생 앱 이용 권한의 발급·연결을 준비 중입니다. 담당자에게 확인하세요.",
-        "WB_CLCO_AUTH_REQUIRED": "앱 전용 열쇠의 인증을 확인하세요. Workbench 열쇠를 복사하지 마세요.",
-        "WB_CLCO_ACCESS_BLOCKED": "학생 앱의 이용 권한을 확인하세요.",
-        "WB_CLCO_COHORT_BUDGET_EXHAUSTED": "반의 AI 사용량이 소진됐습니다. 담당자에게 확인하세요.",
-        "WB_CLCO_RATE_LIMITED": "AI 요청이 잠시 제한됐습니다. 잠시 후 직접 다시 요청하세요.",
-        "WB_CLCO_LIMIT_REACHED": "AI 이용 한도에 도달했습니다. 담당자에게 확인하세요.",
-        "WB_CLCO_SESSION_CLOSED": "현재 AI 이용 시간이 아닙니다. 이용 시간을 확인하세요.",
-        "WB_CLCO_TIMEOUT": "AI 응답 시간이 초과됐습니다. 필요하면 직접 다시 요청하세요.",
-        "REQUEST_TIMEOUT": "서버의 AI 응답 시간이 초과됐습니다. 필요하면 직접 다시 요청하세요.",
-        "ENGINE_TIMEOUT": "서버의 확인 시간이 초과됐습니다. 필요하면 직접 다시 요청하세요.",
-        "TIMEOUT": "AI 응답 시간이 초과됐습니다. 필요하면 직접 다시 요청하세요.",
-        "WB_CLCO_CANCELLED": "AI 요청을 취소했습니다. 이전 응답은 현재 결과가 아닙니다.",
-        "CANCELLED": "AI 요청을 취소했습니다. 이전 응답은 현재 결과가 아닙니다.",
-        "REQUEST_CANCELLED": "AI 요청을 취소했습니다. 이전 응답은 현재 결과가 아닙니다.",
-        "MODEL_NOT_CONFIGURED": "서버에 사용할 AI 모델을 설정하세요.",
-        "ON_AI_AUTHORIZATION_CHANGED": "AI 이용 권한 내용이 점검 도중 바뀌었습니다. 다시 점검하기 전에 담당자에게 현재 권한을 확인하세요.",
-        "ON_AI_MODEL_LIST_EMPTY": "현재 앱 권한으로 쓸 수 있는 AI 모델이 없습니다. 담당자에게 모델 허용 설정을 확인하세요.",
-        "SUBJECT_SCOPE_UNVERIFIED": "현재 로그인과 사건·프로젝트의 연결을 확인할 수 없습니다.",
-        "ON_AI_INVALID_INPUT": "설명에 필요한 사건 근거·규칙을 확인할 수 없습니다.",
-        "ON_AI_INVALID_OUTPUT": "AI 설명의 근거·조치·응답 형식을 확인할 수 없습니다.",
-        "AI_REQUEST_UNVERIFIED": "AI 연결 또는 응답을 확인할 수 없습니다. 기존 기록을 확인하세요.",
-        "NETWORK_ERROR": "네트워크 연결을 확인하고 잠시 뒤 직접 다시 점검하세요."
-      };
-      const safeError = input => {
-        const code = typeof input?.code === 'string' && Object.hasOwn(messages, input.code) ? input.code : 'AI_REQUEST_UNVERIFIED';
-        // 제공 UI와 같은 허용 목록만 사용한다. 원문 예외·인증 값은 표시하지 않는다.
-        return { code, message: input?.message === messages[code] ? input.message : messages[code] };
-      };
-      const element = (tag, text) => {
-        const node = document.createElement(tag);
-        node.textContent = String(text);
-        return node;
-      };
+      const safeError = safeAiError;
+      const element = aiElement;
       root.append(element('h3', '선택한 사건의 AI 설명'));
       if (explanation?.status === 'ok' && typeof event?.id === 'string' && event.id.length && typeof explanation.data?.summary === 'string') {
         root.setAttribute('data-student-explanation-event', event.id);
