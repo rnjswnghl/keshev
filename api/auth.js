@@ -1,6 +1,5 @@
 // Fixed Auth-only upstream. This endpoint never forwards Data API requests.
 const origin = 'https://hzovkgmggfqoumxwbejm.supabase.co';
-const publicKey = 'sb_publishable_nNaEZ0ROeB-Zu_9ko7-c4Q_FCKYuwlS';
 export default async function handler(req, res) {
   res.setHeader('Cache-Control', 'no-store');
   res.setHeader('X-Content-Type-Options', 'nosniff');
@@ -22,7 +21,8 @@ export default async function handler(req, res) {
       body = { refresh_token: body.refresh_token };
     }
   }
-  const key = process.env.SUPABASE_PUBLISHABLE_KEY || publicKey;
+  const key = process.env.SUPABASE_PUBLISHABLE_KEY;
+  if (typeof key !== 'string' || !key.trim()) return res.status(503).json({ error: '인증 공개 키 설정을 확인하세요.' });
   const authorization = path === 'token' ? `Bearer ${key}` : req.headers?.authorization;
   if (path !== 'token' && (typeof authorization !== 'string' || !authorization.startsWith('Bearer ') || authorization.length > 8192)) return res.status(401).json({ error: '로그인이 필요합니다.' });
   const target = new URL(`/auth/v1/${path}`, origin);

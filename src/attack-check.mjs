@@ -22,9 +22,7 @@ export async function runAttackChecks(config) {
  await check('deployment_identity','/aleph.json',`HTTP 200; 단계 ${config.step}, 현재 배포 커밋`);
  await check('security_header','/','HTTP 200; nosniff 보안 헤더');
  attempts.push({attackId:'account_a_crud',expected:'정상 A 로그인 후 추가·수정·삭제 허용',observed:'not_run'});
- await check('anon_data_api',config.originalApiUrl||'https://hzovkgmggfqoumxwbejm.supabase.co/rest/v1/vault_notes','익명 원본 Data API 읽기: HTTP 401 또는 403',{
-  apikey:'sb_publishable_nNaEZ0ROeB-Zu_9ko7-c4Q_FCKYuwlS'
- });
+ await check('anon_data_api',config.originalApiUrl||'https://hzovkgmggfqoumxwbejm.supabase.co/rest/v1/vault_notes','익명 원본 Data API 읽기: HTTP 401 또는 403');
  attempts.push({attackId:'cross_owner_crud',expected:'A/B 본인 CRUD 허용, 타인 GET·PUT·DELETE 404',observed:'not_run'});
  await check('browser_key_scan','/','화면 HTML의 공개·비밀 키 없음; 별도 소스 검사 필요');
  await check('browser_app_key_scan','/app.js','화면 JS의 공개·비밀 키 없음; 별도 소스 검사 필요');
