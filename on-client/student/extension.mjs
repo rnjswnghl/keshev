@@ -573,6 +573,69 @@ export function createStudentView() {
       }
       return root;
     },
-    renderAction() { return '학생 구현 대기: 현재 사건·조치·실제 대상·사람 확인·ACK와 원천 효과·unknown을 구분하세요.'; },
+    renderAction({ status = 'idle', event, actionId, target, receipt, observation, message, confirmationExpiresAt, error } = {}) {
+      const root = document.createElement('section');
+      // 전체 입력이나 확인 티켓을 저장하지 않고 표시할 필드만 선택합니다.
+      const safeText = (value) => {
+        if (typeof value !== 'string' && typeof value !== 'number') return null;
+        const text = String(value);
+        return /bearer\s|(?:token|password|secret|api[_ -]?key)\s*[:=]|eyJ[A-Za-z0-9_-]+\.|sk-[A-Za-z0-9_-]+|ac-on-[A-Za-z0-9_-]+|-----BEGIN .*PRIVATE KEY/i.test(text)
+          ? '비밀정보 포함 가능성이 있어 표시하지 않습니다' : text;
+      };
+      const row = (label, value) => {
+        const text = safeText(value);
+        if (text !== null) paragraph(root, `${label}: ${text}`);
+      };
+      const labels = {
+        idle: '아직 미실행(idle)',
+        loading: '조치 준비 또는 결과 조회 중(loading). 결과는 아직 확인되지 않았습니다.',
+        prepared: '준비됨·미실행(prepared). 실제 대상과 조치를 사람이 확인해야 합니다.',
+        executing: '서버에 전달 중(executing). 결과는 아직 확인되지 않았습니다.',
+        pending: '서버 접수·처리 중(pending). ACK는 접수 응답이며 효과 확인이 아닙니다.',
+        succeeded: '효과 확인(succeeded)',
+        denied: '거절(denied)', failed: '실패(failed)',
+        unknown: '결과 불명(unknown). 성공이나 효과 없음으로 판단하지 마세요.',
+        expired: '확인 기한 지남(expired). 제공 화면에서 다시 준비하세요.',
+        error: '요청 처리 안 됨(error).',
+      };
+      const bindingMismatch = receipt && ((receipt.eventId != null && receipt.eventId !== event?.id)
+        || (receipt.actionId != null && receipt.actionId !== actionId));
+      const currentStatus = bindingMismatch || !Object.hasOwn(labels, status)
+        || status === 'succeeded' && observation?.effectApplied !== true ? 'unknown' : status;
+      paragraph(root, labels[currentStatus]);
+      if (bindingMismatch) paragraph(root, '현재 사건·조치와 접수 정보가 일치하지 않아 결과를 확인할 수 없습니다.');
+      if (event?.id != null) {
+        row('사건 ID', event.id);
+        if (safeText(event.id) === event.id) root.setAttribute('data-student-action-event', event.id);
+      }
+      for (const item of Array.isArray(event?.evidence) ? event.evidence : []) row('근거 ID', item.id);
+      row('actionId', actionId);
+      row('target.id', target?.id);
+      row('target.generation', target?.generation);
+      row('requestId', receipt?.requestId);
+      row('receiptId', receipt?.receiptId);
+      row('version', receipt?.version);
+      if (typeof receipt?.requestId === 'string' && safeText(receipt.requestId) === receipt.requestId && !bindingMismatch) root.setAttribute('data-student-action-request', receipt.requestId);
+      if (currentStatus === 'prepared') row('사람 확인 기한', confirmationExpiresAt);
+      if (currentStatus === 'succeeded') {
+        row('관측 시각', observation.observedAt);
+        paragraph(root, 'effectApplied: true');
+      }
+      // 전송 중·처리 중·결과 불명에서는 임의 메시지로 결과를 오인하지 않게 합니다.
+      if (['idle', 'prepared', 'denied', 'failed', 'expired'].includes(currentStatus)) row('안내', message);
+      if (currentStatus === 'error') {
+        row('오류 코드', error?.code);
+        row('요청 실패 이유', error?.message ?? message ?? '원인을 확인할 수 없습니다.');
+      }
+      if (currentStatus === 'unknown' || currentStatus === 'pending') {
+        paragraph(root, '제공 화면의 「연동 시스템 결과만 재조회」를 직접 누르세요. 조치를 다시 집행하거나 자동 재요청하지 않습니다.');
+      }
+      if (receipt?.replayed === true) paragraph(root, '동일 요청의 접수 정보를 다시 표시합니다(replayed: true). 새로 실행한 것이 아닙니다.');
+      if (event && Array.isArray(event.supportedActions) && event.supportedActions.length === 0) {
+        paragraph(root, '연동 시스템이 지원하는 조치가 없어 조치 준비 버튼이 나오지 않는 것이 정상입니다.');
+      }
+      paragraph(root, 'AI 제안만으로 실행되지 않습니다. 제공 화면에서 대상과 조치를 사람이 확인합니다. 「조치 화면 취소」는 이미 서버에 전달된 조치 효과를 되돌리지 않습니다.');
+      return root;
+    },
   };
 }
