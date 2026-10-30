@@ -1,6 +1,6 @@
 // 이 파일은 학생이 같은 프로젝트에서 이어서 구현합니다.
 // 제공 UI를 받은 것만으로 단계 완료를 인정하지 않습니다.
-export function createStudentView() {
+export function createStudentView({ api, onChange } = {}) {
   // 제공 화면과 같은 안전한 오류 문구만 사용하며 원문 오류는 노출하지 않습니다.
   const AI_MESSAGES = Object.freeze({
     ON_AI_TRANSPORT_PENDING: 'AI 연결 모듈 준비 중입니다. 담당자에게 확인하세요.',
@@ -36,6 +36,185 @@ export function createStudentView() {
     const node = document.createElement('p');
     node.textContent = text;
     root.append(node);
+  };
+  // ── 2~4일차: 내 PC 점검 요약 ─────────────────────────────────────────
+  // 측정은 제공 서버(src/pc-status.mjs)가 이 PC에서 직접 합니다. 학생 코드는 허용된 읽기 전용
+  // 경로 api.get('/api/pc/status')로 결과만 받습니다. 「다시 조회」를 누를 때만 한 번 읽고,
+  // 자동 반복·저장·외부 전송은 하지 않습니다. 예시 값은 쓰지 않습니다.
+  const PC_REASONS = Object.freeze({
+    unsupported: '이 운영체제에서는 읽지 않습니다(Windows 전용 항목)',
+    permission_denied: '일반 권한으로 읽을 수 없습니다. 관리자 권한은 요청하지 않습니다',
+    timeout: '읽는 시간이 초과됐습니다',
+    cancelled: '조회가 취소됐습니다',
+    invalid_sample: 'CPU 표본이 올바르지 않습니다',
+    invalid_response: '읽은 값의 형식이 올바르지 않습니다',
+    query_failed: '운영체제 조회에 실패했습니다',
+  });
+  const PC_ORDER = ['cpu', 'memory', 'disk', 'network', 'firewall', 'events'];
+  const PC_LABELS = Object.freeze({ cpu: 'CPU 사용률', memory: '메모리 사용량', disk: '디스크 남은 공간', network: '네트워크 연결', firewall: '방화벽 설정', events: 'Windows 경고·오류 기록' });
+  const pc = { status: 'idle', data: null, previous: null, error: null, lastOkAt: null, history: [] };
+  const gib = bytes => `${(bytes / 1073741824).toFixed(1)} GB`;
+  const clock = iso => {
+    const date = new Date(iso);
+    return Number.isNaN(date.getTime()) ? '시각 확인 불가' : date.toLocaleTimeString('ko-KR', { hour12: false });
+  };
+  const pcValue = (key, metric) => {
+    if (!metric || metric.state !== 'ok') return null;
+    if (key === 'cpu' && Number.isFinite(metric.usagePercent)) return `${metric.usagePercent}% (${metric.sampleMs ?? 200}ms 표본)`;
+    if (key === 'memory' && metric.totalBytes > 0) return `${gib(metric.usedBytes)} / ${gib(metric.totalBytes)} 사용 (${Math.round((metric.usedBytes / metric.totalBytes) * 100)}%)`;
+    if (key === 'disk' && metric.totalBytes > 0) return `${gib(metric.freeBytes)} 남음 / 전체 ${gib(metric.totalBytes)} (${Math.round((metric.freeBytes / metric.totalBytes) * 100)}%)`;
+    if (key === 'network' && Number.isSafeInteger(metric.interfaceCount)) return metric.interfaceCount > 0 ? `외부 연결 장치 ${metric.interfaceCount}개 · IPv4 주소 ${metric.ipv4Count}개` : '외부 네트워크 연결 장치 없음';
+    if (key === 'firewall' && Array.isArray(metric.profiles)) return metric.profiles.map(item => `${item.name} ${item.enabled ? '켜짐' : '꺼짐'}`).join(' · ') + ' (읽기만 함)';
+    if (key === 'events' && Number.isSafeInteger(metric.warningCount)) return `최근 24시간 경고 ${metric.warningCount}건 · 오류 ${metric.errorCount}건${metric.truncated ? ' (최대 5,000건까지만 집계)' : ''}`;
+    return null;
+  };
+  // 직전 성공 조회와의 차이(추가 기능). 두 조회 모두 실측일 때만 계산합니다.
+  const pcTrend = (key, now, before) => {
+    if (!now || !before || now.state !== 'ok' || before.state !== 'ok') return null;
+    if (key === 'cpu') return `${(now.usagePercent - before.usagePercent) >= 0 ? '+' : ''}${(now.usagePercent - before.usagePercent).toFixed(1)}%p`;
+    if (key === 'memory') { const diff = (now.usedBytes - before.usedBytes) / 1073741824; return `${diff >= 0 ? '+' : ''}${diff.toFixed(2)} GB`; }
+    if (key === 'disk') { const diff = (now.freeBytes - before.freeBytes) / 1073741824; return `${diff >= 0 ? '+' : ''}${diff.toFixed(2)} GB`; }
+    return null;
+  };
+  const refreshPc = async () => {
+    if (pc.status === 'loading' || typeof api?.get !== 'function') return;
+    pc.status = 'loading';
+    onChange?.();
+    let result;
+    try { result = await api.get('/api/pc/status'); } catch { result = { ok: false, error: { code: 'REQUEST_FAILED' } }; }
+    const metrics = result?.ok ? result.data?.metrics : null;
+    if (result?.ok && result.data?.source === 'local-pc' && metrics && typeof metrics === 'object') {
+      if (pc.data) pc.previous = pc.data;
+      pc.data = { measuredAt: result.data.measuredAt, metrics };
+      pc.lastOkAt = result.data.measuredAt;
+      const m = metrics;
+      pc.history.unshift({
+        at: result.data.measuredAt,
+        cpu: m.cpu?.state === 'ok' && Number.isFinite(m.cpu.usagePercent) ? `${m.cpu.usagePercent}%` : '확인 불가',
+        memory: m.memory?.state === 'ok' && m.memory.totalBytes > 0 ? `${Math.round((m.memory.usedBytes / m.memory.totalBytes) * 100)}%` : '확인 불가',
+        disk: m.disk?.state === 'ok' && m.disk.totalBytes > 0 ? `${Math.round((m.disk.freeBytes / m.disk.totalBytes) * 100)}%` : '확인 불가',
+      });
+      pc.history.length = Math.min(pc.history.length, 5);
+      pc.status = 'ok';
+      pc.error = null;
+    } else {
+      pc.status = 'error';
+      pc.error = typeof result?.error?.code === 'string' ? result.error.code : 'INVALID_RESPONSE';
+    }
+    onChange?.();
+  };
+  const buildPcPanel = mode => {
+    const panel = document.createElement('section');
+    panel.className = 'student-pc';
+    panel.dataset.studentPc = pc.status;
+    const title = document.createElement('h3');
+    title.textContent = '내 PC 점검 요약';
+    const scope = document.createElement('p');
+    scope.textContent = '값은 이 PC에서 실제로 읽은 결과(실측)이며 예시 값을 쓰지 않습니다. 읽기만 하고 설정을 바꾸지 않습니다.';
+    const sdp = document.createElement('p');
+    sdp.dataset.studentSdp = mode;
+    sdp.textContent = mode === 'connected' ? 'SDP 서버: 연결됨 · 아래 PC 조회와는 별개입니다.'
+      : mode === 'demo' ? 'SDP 서버: 예제 모드(계정·기록은 예제 자료) · 아래 PC 값은 예제가 아닌 실측입니다.'
+      : 'SDP 서버: 미연결 · 아래 PC 조회 성공과 섞지 않습니다.';
+    const controls = document.createElement('p');
+    const refresh = document.createElement('button');
+    refresh.type = 'button';
+    refresh.dataset.studentPcRefresh = '';
+    refresh.textContent = '다시 조회';
+    refresh.disabled = pc.status === 'loading' || typeof api?.get !== 'function';
+    refresh.addEventListener('click', () => {
+      const keepFocus = document.activeElement === refresh;
+      refreshPc().finally(() => {
+        if (keepFocus) document.querySelector('[data-student-pc-refresh]')?.focus();
+      });
+      if (keepFocus) document.querySelector('[data-student-pc-refresh]')?.focus();
+    });
+    const state = document.createElement('span');
+    state.setAttribute('role', 'status');
+    state.textContent = pc.status === 'loading' ? ' 새로 읽는 중…'
+      : pc.status === 'idle' ? ' 아직 조회하지 않았습니다. 「다시 조회」를 누르면 한 번 읽습니다.'
+      : pc.status === 'ok' ? ` 측정 시각 ${clock(pc.data.measuredAt)} · 출처 이 PC(local-pc)` : ' 이번 조회 실패';
+    controls.append(refresh, state);
+    panel.append(title, scope, sdp, controls);
+    if (typeof api?.get !== 'function') {
+      panel.append(Object.assign(document.createElement('p'), { textContent: '이 화면에는 PC 조회 기능이 연결되지 않았습니다. 확인 불가로 둡니다.' }));
+      return panel;
+    }
+    if (pc.status === 'error') {
+      const box = document.createElement('div');
+      box.setAttribute('role', 'alert');
+      box.dataset.studentPcError = pc.error;
+      const head = document.createElement('p');
+      head.textContent = `PC 상태를 읽지 못했습니다 (${pc.error}).`;
+      const next = document.createElement('p');
+      next.textContent = pc.error === 'NOT_ALLOWED' ? '다음 행동: 시작 틀이 PC 조회를 지원하는 판(0.2.18 이상)인지 확인합니다.'
+        : '다음 행동: 앱 서버가 켜져 있는지 확인하고 「다시 조회」를 직접 누릅니다. 계속 실패하면 「도움정보 불러오기」 결과를 담당자에게 전달합니다.';
+      const stale = document.createElement('p');
+      stale.textContent = pc.lastOkAt ? `마지막 성공 조회(${clock(pc.lastOkAt)})의 값은 현재 상태로 표시하지 않습니다.` : '이전에 성공한 조회가 없습니다.';
+      box.append(head, next, stale);
+      panel.append(box);
+      return panel;
+    }
+    if (pc.status !== 'ok') return panel;
+    const metrics = pc.data.metrics;
+    let measured = 0;
+    const failed = [];
+    const list = document.createElement('dl');
+    for (const key of PC_ORDER) {
+      const metric = metrics[key];
+      const value = pcValue(key, metric);
+      const term = document.createElement('dt');
+      term.textContent = PC_LABELS[key];
+      const detail = document.createElement('dd');
+      detail.dataset.studentPcMetric = key;
+      if (value) {
+        measured++;
+        detail.dataset.state = 'measured';
+        const trend = pcTrend(key, metric, pc.previous?.metrics?.[key]);
+        detail.textContent = `실측 · ${value}${trend ? ` · 직전 조회(${clock(pc.previous.measuredAt)}) 대비 ${trend}` : ''}`;
+      } else {
+        const reason = PC_REASONS[metric?.reason] ?? '값을 읽지 못했습니다';
+        failed.push(PC_LABELS[key]);
+        detail.dataset.state = 'unavailable';
+        detail.textContent = `확인 불가 · ${reason}`;
+      }
+      list.append(term, detail);
+    }
+    const summary = document.createElement('p');
+    summary.dataset.studentPcSummary = `${measured}/${PC_ORDER.length}`;
+    summary.textContent = `실측 ${measured}/${PC_ORDER.length} · 확인 불가 ${failed.length}개`;
+    const note = document.createElement('p');
+    note.textContent = 'Windows 경고·오류 건수는 System·Application 기록의 단순 집계이며 침입이나 공격 탐지 결과가 아닙니다. 확인 불가는 정상이라는 뜻이 아닙니다.';
+    panel.append(summary, list, note);
+    if (failed.length) {
+      const next = document.createElement('p');
+      next.textContent = `읽지 못한 항목: ${failed.join(', ')}. 다음 행동: 이유를 확인한 뒤 「다시 조회」를 누릅니다. 권한이나 운영체제 문제는 설정을 바꾸지 않고 그대로 둡니다.`;
+      panel.append(next);
+    }
+    if (!pc.previous) panel.append(Object.assign(document.createElement('p'), { textContent: '직전 조회와의 비교는 두 번째 조회부터 표시합니다.' }));
+    const table = document.createElement('table');
+    table.dataset.studentPcHistory = String(pc.history.length);
+    const caption = document.createElement('caption');
+    caption.textContent = '최근 조회 기록(이 화면을 연 동안만, 최대 5건, 실측)';
+    const head = document.createElement('tr');
+    for (const label of ['측정 시각', 'CPU 사용률', '메모리 사용률', '디스크 남은 비율']) {
+      const cell = document.createElement('th');
+      cell.scope = 'col';
+      cell.textContent = label;
+      head.append(cell);
+    }
+    table.append(caption, head);
+    for (const row of pc.history) {
+      const line = document.createElement('tr');
+      for (const value of [clock(row.at), row.cpu, row.memory, row.disk]) {
+        const cell = document.createElement('td');
+        cell.textContent = value;
+        line.append(cell);
+      }
+      table.append(line);
+    }
+    panel.append(table);
+    return panel;
   };
   return {
     renderIdentity({ me, devices, sessions } = {}) {
@@ -350,6 +529,7 @@ export function createStudentView() {
     renderStatus({ devices, sessions, notifications = [], diagnostics, mode = 'unknown' } = {}) {
       const root = document.createElement('section');
       root.className = 'student-status';
+      root.append(buildPcPanel(mode));
       const element = (tag, text) => {
         const node = document.createElement(tag);
         if (text !== undefined) node.textContent = String(text);
